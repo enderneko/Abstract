@@ -1,0 +1,21 @@
+## Interface: 90100
+## Title: Abstract Damage Meter
+## Version: r1-alpha
+## Author: 篠崎
+## SavedVariables: AbstractDB
+
+Locales\enUS.lua
+# Locales\zhCN.lua
+# Locales\zhTW.lua
+# Locales\koKR.lua
+
+Libs\LoadLibs.xml
+
+Core.lua
+Utils.lua
+Parser.lua
+# Revise.lua
+Widgets\LoadWidgets.xml
+
+Frames\MeterFrame.lua
+Frames\OptionsFrame.lua

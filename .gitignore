@@ -1,0 +1,4 @@
+.vscode
+
+#external libraries
+/Libs/LibStub/tests
