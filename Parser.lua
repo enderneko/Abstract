@@ -23,21 +23,18 @@ local InitAuraData, UpdateAuraData, UpdateAuraAfterCombat
 -- init segment
 -------------------------------------------------
 local inCombat -- group in combat
-local current
+local current, last
 local function InitCurrentSegmentData(segmentName, isBossEncounter)
     inCombat = true
-    if current then
-        if isBossEncounter then -- ENCOUNTER_START -- FIXME: necessary?
-            current["segment"] = segmentName
-            current["type"] = "boss"
-        end
-    else
+    if not current then
         current = {
             ["segment"] = segmentName,
             ["start"] = time(),
             ["type"] = isBossEncounter and "boss" or "trash",
-            ["preciseTime"] = GetTime(),
+            ["preciseDuration"] = GetTime(),
             ["friend-done"] = {
+                ["group-damage"] = 0,
+                -- ["group-dps"] = 0,
                 ["damage"] = {},
                 ["healing"] = {},
                 ["debuff"] = {}, -- debuff self->self self->enemy
@@ -125,11 +122,12 @@ local function CheckCombat(escapeCheck)
         Abstract:Fire("CombatEnd")
         -- update segment data
         current["end"] = time()
-        current["preciseTime"] = tonumber(string.format("%.3f", GetTime() - current["preciseTime"]))
+        current["preciseDuration"] = tonumber(string.format("%.3f", GetTime() - current["preciseDuration"]))
         -- update aura data
         UpdateAuraAfterCombat("buff")
         UpdateAuraAfterCombat("debuff")
         -- reset
+        last = current
         current = nil
     end
 end
@@ -139,18 +137,26 @@ segment:RegisterEvent("ENCOUNTER_START")
 segment:RegisterEvent("ENCOUNTER_END")
 segment:RegisterEvent("UNIT_FLAGS")
 -- local lastChecked
-segment:SetScript("OnEvent", function(self, event, arg1, arg2, ...)
-    if event == "ENCOUNTER_START" then
+segment:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4, arg5)
+    if event == "UNIT_FLAGS" and F:IsGroupUnit(arg1) and inCombat then
+        CheckCombat()
+    elseif event == "ENCOUNTER_START" then
         -- local encounterID, encounterName = arg1, arg2
-        InitCurrentSegmentData(arg2, true)
-    elseif event == "UNIT_FLAGS" and F:IsGroupUnit(arg1) and inCombat then
-        -- if (not lastChecked) or (GetTime() - lastChecked >= 0.5) then
-            CheckCombat()
-            -- lastChecked = GetTime()
-        -- end
+        -- print("ENCOUNTER_START", arg1, arg2)
+        if current then
+            current["segment"] = arg2
+            current["type"] = "boss"
+        else
+            InitCurrentSegmentData(arg2, true)
+        end
     elseif event == "ENCOUNTER_END" and inCombat then
+        -- encounterID, encounterName, difficultyID, groupSize, success
+        -- print("ENCOUNTER_END", arg1, arg2, arg3, arg4, arg5)
         inCombat = false
         CheckCombat(true)
+        if last and last["segment"] == arg2 then
+            last["success"] = arg5 == 1
+        end
     end
 end)
 
@@ -260,6 +266,11 @@ local function UpdateDamageDone(dataType, sourceName, destName, spellId, spellNa
     -- critical
     if isCritical then
         current[dataType]["damage"][sourceName]["spell"][spellId]["critical"] = current[dataType]["damage"][sourceName]["spell"][spellId]["critical"] + 1
+    end
+
+    -- update group damage
+    if dataType == "friend-done" then
+        current[dataType]["group-damage"] = current[dataType]["group-damage"] + amount
     end
 end
 
@@ -512,7 +523,7 @@ function f:PLAYER_LOGIN()
     for unit in F:IterateGroupMembers() do
         f:UNIT_PET(unit)
     end
-    texplore(petToPlayer)
+    -- texplore(petToPlayer)
 end
 
 function f:PLAYER_ENTERING_WORLD(isInitialLogin, isReloadingUi)

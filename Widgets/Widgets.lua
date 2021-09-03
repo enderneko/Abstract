@@ -1823,8 +1823,14 @@ local function CreateBar(parent)
     local b = CreateFrame("StatusBar", nil, parent)
     b:SetSize(20, 20)
 
+    b.rankingText = b:CreateFontString(nil, "OVERLAY", font_name)
+    b.rankingText:SetPoint("LEFT")
+    function b:SetRankingText(text)
+        b.rankingText:SetText(text)
+    end
+
     b.leftText = b:CreateFontString(nil, "OVERLAY", font_name)
-    b.leftText:SetPoint("LEFT")
+    b.leftText:SetPoint("LEFT", b.rankingText, "RIGHT")
     function b:SetLeftText(text)
         b.leftText:SetText(text)
     end
@@ -1861,16 +1867,22 @@ function addon:CreateScrollChart(parent)
         -- sort
         F:Sort(bars, "value", "descending")
         -- point
-        local last
-        for _, b in pairs(bars) do
-            b:SetPoint("RIGHT")
-            if last then
-                b:SetPoint("TOPLEFT", last, "BOTTOMLEFT", 0, 1)
+        for j = 1, i do
+            bars[j]:SetRankingText(j..".")
+            bars[j]:Show()
+            bars[j]:SetPoint("RIGHT")
+            if j == 1 then
+                bars[j]:SetPoint("TOPLEFT")
             else
-                b:SetPoint("TOPLEFT")
+                P:Point(bars[j], "TOPLEFT", bars[j-1], "BOTTOMLEFT", 0, 1)
             end
-            last = b
         end
+        -- hide unused
+        for k = i+1, #bars do
+            bars[k]:ClearAllPoints()
+            bars[k]:Hide()
+        end
+        -- TODO: update scroll height
     end
 
     return chart

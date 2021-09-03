@@ -14,7 +14,7 @@ mainFrame:SetFrameStrata("LOW")
 -- text:SetPoint("CENTER", UIParent)
 
 local function CombatStart(data)
-    F:Debug("|cff22ff22CombatStart|r", data["segment"], data["preciseTime"])
+    F:Debug("|cff22ff22CombatStart|r", data["segment"], data["preciseDuration"])
     Abstract.frames.meterFrames[1]:CombatStart()
 end
 Abstract:RegisterCallback("CombatStart", "MeterFrame_CombatStart", CombatStart)
@@ -66,6 +66,7 @@ function F:CreateMeterFrame(i, t)
     local title = m:CreateFontString(nil, "OVERLAY", "ABSTRACT_FONT_WIDGET")
     title:SetPoint("TOPLEFT")
     m.default = t.default
+    m.current = t.default
     title:SetText(L[m.default])
 
     -- scroll
@@ -77,6 +78,7 @@ function F:CreateMeterFrame(i, t)
 
     function m:ShowData(data, which)
         which = which or m.default
+        m.current = which
         title:SetText(L[which])
         
         local i1, i2, func = indices[which][1], indices[which][2]
@@ -89,14 +91,14 @@ function F:CreateMeterFrame(i, t)
             local timeElapsed = 0
             chart:SetScript("OnUpdate", function(self, elapsed)
                 timeElapsed = timeElapsed + elapsed
-                if timeElapsed >= 0.1 then
+                if timeElapsed >= 0.2 then
                     timeElapsed = 0
-                    func(chart, data[i1][i2], GetTime() - data["preciseTime"])
+                    func(chart, data[i1][i2], GetTime() - data["preciseDuration"])
                 end
             end)
         else
             chart:SetScript("OnUpdate", nil)
-            func(chart, data[i1][i2])
+            func(chart, data[i1][i2], data["preciseDuration"])
         end
     end
 
@@ -105,6 +107,8 @@ function F:CreateMeterFrame(i, t)
     end
 
     function m:CombatEnd()
-        chart:SetScript("OnUpdate", nil)
+        C_Timer.After(.2, function()
+            m:ShowData(Abstract.current, m.current)
+        end)
     end
 end
