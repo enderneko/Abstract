@@ -13,6 +13,7 @@ Libs\LoadLibs.xml
 
 Core.lua
 Utils.lua
+Roster.lua
 Parser.lua
 # Revise.lua
 Widgets\LoadWidgets.xml

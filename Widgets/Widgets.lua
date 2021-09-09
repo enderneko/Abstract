@@ -1851,39 +1851,55 @@ function addon:CreateScrollChart(parent)
     local chart = addon:CreateScrollFrame(parent, 0, 0, nil, nil, true)
     
     local bars = {}
+    local sorted = {}
     chart.bars = bars
     function chart:ShowData_DH(data, duration)
         -- Abstract.data[1]["friend-done"]["damage"]
         local i = 0
         for source, t in pairs(data) do
             i = i + 1
-            local b
+            if not sorted[i] then
+                sorted[i] = {}
+            end
+            -- create and point
             if not bars[i] then
                 bars[i] = CreateBar(chart)
+                bars[i]:SetPoint("RIGHT")
+                if i == 1 then
+                    bars[i]:SetPoint("TOPLEFT")
+                else
+                    P:Point(bars[i], "TOPLEFT", bars[i-1], "BOTTOMLEFT", 0, 1)
+                end
             end
-            b = bars[i]
-            b.value = t["total"]
             t["perSecond"] = tonumber(string.format("%d", t["total"] / duration))
-            b:SetLeftText(source)
-            b:SetRightText(t["total"].." | "..t["perSecond"])
+            sorted[i].name = source
+            sorted[i].perSecond = t["perSecond"]
+            sorted[i].total = t["total"]
         end
         -- sort
-        F:Sort(bars, "value", "descending")
-        -- point
+        F:Sort(sorted, "total", "descending")
+        -- show
         for j = 1, i do
-            bars[j]:SetRankingText(j..".")
-            bars[j]:Show()
-            bars[j]:SetPoint("RIGHT")
             if j == 1 then
-                bars[j]:SetPoint("TOPLEFT")
+                bars[j]:SetValue(1)
             else
-                P:Point(bars[j], "TOPLEFT", bars[j-1], "BOTTOMLEFT", 0, 1)
+                bars[j]:SetValue(sorted[j].total/sorted[1].total)
             end
+            bars[j]:SetRankingText(j..".")
+            bars[j]:SetLeftText(sorted[j].name)
+            bars[j]:SetRightText(sorted[j].total.." | "..sorted[j].perSecond)
+            bars[j]:Show()
+            -- bars[j]:SetPoint("RIGHT")
+            -- if j == 1 then
+            --     bars[j]:SetPoint("TOPLEFT")
+            -- else
+            --     P:Point(bars[j], "TOPLEFT", bars[j-1], "BOTTOMLEFT", 0, 1)
+            -- end
         end
         -- hide unused
         for k = i+1, #bars do
-            bars[k]:ClearAllPoints()
             bars[k]:Hide()
+            wipe(sorted[k])
         end
         -- TODO: update scroll height
     end

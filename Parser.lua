@@ -100,6 +100,7 @@ local function InitCurrentSegmentData(segmentName, isBossEncounter)
         -- end
 
         tinsert(data, current)
+        current.index = #data
         Abstract.current = current
         Abstract:Fire("CombatStart", current)
     end
@@ -119,7 +120,7 @@ local function CheckCombat(escapeCheck)
     
     if not isInCombat then
         inCombat = false
-        Abstract:Fire("CombatEnd")
+        Abstract:Fire("CombatEnd", current["type"])
         -- update segment data
         current["end"] = time()
         current["preciseDuration"] = tonumber(string.format("%.3f", GetTime() - current["preciseDuration"]))
@@ -136,10 +137,13 @@ local segment = CreateFrame("Frame")
 segment:RegisterEvent("ENCOUNTER_START")
 segment:RegisterEvent("ENCOUNTER_END")
 segment:RegisterEvent("UNIT_FLAGS")
--- local lastChecked
+
+local wipeCounter = {}
 segment:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4, arg5)
-    if event == "UNIT_FLAGS" and F:IsGroupUnit(arg1) and inCombat then
-        CheckCombat()
+    if event == "UNIT_FLAGS" then
+        if F:IsGroupUnit(arg1) and inCombat then
+            CheckCombat()
+        end
     elseif event == "ENCOUNTER_START" then
         -- local encounterID, encounterName = arg1, arg2
         -- print("ENCOUNTER_START", arg1, arg2)
@@ -149,16 +153,44 @@ segment:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4, arg5)
         else
             InitCurrentSegmentData(arg2, true)
         end
-    elseif event == "ENCOUNTER_END" and inCombat then
-        -- encounterID, encounterName, difficultyID, groupSize, success
-        -- print("ENCOUNTER_END", arg1, arg2, arg3, arg4, arg5)
-        inCombat = false
-        CheckCombat(true)
-        if last and last["segment"] == arg2 then
-            last["success"] = arg5 == 1
+    elseif event == "ENCOUNTER_END" then
+        if inCombat then
+            -- encounterID, encounterName, difficultyID, groupSize, success
+            -- print("ENCOUNTER_END", arg1, arg2, arg3, arg4, arg5)
+            inCombat = false
+            CheckCombat(true)
+            if last and last["segment"] == arg2 then
+                last["success"] = arg5 == 1
+                if arg5 == 0 then -- wipe
+                    wipeCounter[arg1] = (wipeCounter[arg1] or 0) + 1
+                    last["segment"] = arg2.." #"..wipeCounter[arg1]
+                end
+            end
         end
     end
 end)
+
+-------------------------------------------------
+-- merge
+-------------------------------------------------
+local startIndex, lastIndex = 1
+local function Merge(type)
+    lastIndex = #data
+    if lastIndex-1 <= startIndex then return end
+
+    if data[startIndex]["type"] == "trash" and data[startIndex+1]["type"] == "trash" then
+        -- F:Merge(data, startIndex, startIndex+1)
+    end
+    -- delete & update
+    data[startIndex+1] = data[lastIndex]
+    data[startIndex+1]["index"] = startIndex+1
+    data[lastIndex] = nil
+    
+    if type == "boss" then
+        startIndex = lastIndex + 1
+    end
+end
+-- Abstract:RegisterCallback("CombatEnd", "Merger_CombatEnd", Merge)
 
 -------------------------------------------------
 -- init data
@@ -512,56 +544,6 @@ UpdateAuraAfterCombat = function(auraType)
 end
 
 -------------------------------------------------
--- other events
--------------------------------------------------
-local f = CreateFrame("Frame")
-f:RegisterEvent("PLAYER_LOGIN")
-f:RegisterEvent("PLAYER_ENTERING_WORLD")
-f:RegisterEvent("UNIT_PET")
-
-function f:PLAYER_LOGIN()
-    for unit in F:IterateGroupMembers() do
-        f:UNIT_PET(unit)
-    end
-    -- texplore(petToPlayer)
-end
-
-function f:PLAYER_ENTERING_WORLD(isInitialLogin, isReloadingUi)
-    if not (isInitialLogin or isReloadingUi) then
-        wipe(petToPlayer)
-        wipe(unitToPet)
-        for unit in F:IterateGroupMembers() do
-            f:UNIT_PET(unit)
-        end
-    end
-end
-
-function f:UNIT_PET(unit)
-    -- print("UNIT_PET", unit)
-    -- init petToPlayer
-    local player = GetUnitName(unit, true)
-    
-    if unit == "player" then
-        unit = "pet"
-    else
-        unit = string.gsub(unit, "party", "partypet")
-        unit = string.gsub(unit, "raid", "raidpet")
-    end
-    
-    local petGUID = UnitGUID(unit)
-    if UnitExists(unit) then
-        petToPlayer[petGUID] = player
-        unitToPet[unit] = petGUID
-    elseif unitToPet[unit] then
-        petToPlayer[unitToPet[unit]] = nil
-    end
-end
-
-f:SetScript("OnEvent", function(self, event, ...)
-    self[event](self, ...)
-end)
-
--------------------------------------------------
 -- COMBAT_LOG_EVENT_UNFILTERED
 -------------------------------------------------
 local cleu = CreateFrame("Frame")
@@ -704,3 +686,53 @@ function cleu:AURA(...)
         UpdateAuraData(strlower(auraType), sourceName, spellId, spellName, event, timestamp)
     end
 end
+
+-------------------------------------------------
+-- other events
+-------------------------------------------------
+local f = CreateFrame("Frame")
+f:RegisterEvent("PLAYER_LOGIN")
+f:RegisterEvent("PLAYER_ENTERING_WORLD")
+f:RegisterEvent("UNIT_PET")
+
+function f:PLAYER_LOGIN()
+    for unit in F:IterateGroupMembers() do
+        f:UNIT_PET(unit)
+    end
+    -- texplore(petToPlayer)
+end
+
+function f:PLAYER_ENTERING_WORLD(isInitialLogin, isReloadingUi)
+    if not (isInitialLogin or isReloadingUi) then
+        wipe(petToPlayer)
+        wipe(unitToPet)
+        for unit in F:IterateGroupMembers() do
+            f:UNIT_PET(unit)
+        end
+    end
+end
+
+function f:UNIT_PET(unit)
+    -- print("UNIT_PET", unit)
+    -- init petToPlayer
+    local player = GetUnitName(unit, true)
+    
+    if unit == "player" then
+        unit = "pet"
+    else
+        unit = string.gsub(unit, "party", "partypet")
+        unit = string.gsub(unit, "raid", "raidpet")
+    end
+    
+    local petGUID = UnitGUID(unit)
+    if UnitExists(unit) then
+        petToPlayer[petGUID] = player
+        unitToPet[unit] = petGUID
+    elseif unitToPet[unit] then
+        petToPlayer[unitToPet[unit]] = nil
+    end
+end
+
+f:SetScript("OnEvent", function(self, event, ...)
+    self[event](self, ...)
+end)
