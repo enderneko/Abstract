@@ -1821,7 +1821,10 @@ end
 ------------------------------------------------
 local function CreateBar(parent)
     local b = CreateFrame("StatusBar", nil, parent)
-    b:SetSize(20, 20)
+    b:SetSize(18, 18)
+
+    b:SetMinMaxValues(0, 1)
+    b:SetStatusBarTexture("Interface\\AddOns\\Abstract\\Media\\bar.tga")
 
     b.rankingText = b:CreateFontString(nil, "OVERLAY", font_name)
     b.rankingText:SetPoint("LEFT")
