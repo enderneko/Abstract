@@ -1863,7 +1863,7 @@ function addon:CreateScrollChart(parent)
             end
             -- create and point
             if not bars[i] then
-                bars[i] = CreateBar(chart)
+                bars[i] = CreateBar(chart.content)
                 bars[i]:SetPoint("RIGHT")
                 if i == 1 then
                     bars[i]:SetPoint("TOPLEFT")
@@ -1896,6 +1896,8 @@ function addon:CreateScrollChart(parent)
             --     P:Point(bars[j], "TOPLEFT", bars[j-1], "BOTTOMLEFT", 0, 1)
             -- end
         end
+        -- update scroll height
+        chart:SetContentHeight(18, i, -1)
         -- hide unused
         for k = i+1, #bars do
             bars[k]:Hide()
