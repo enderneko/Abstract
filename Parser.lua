@@ -16,7 +16,7 @@ local data = {}
 Abstract.data = data
 
 local petToPlayer = {} -- petGUID -> playerName
-local unitToPet = {} -- playerUnitId -> petGUID
+local unitToPet = {} -- petUnitId -> petGUID
 
 local InitAuraData, UpdateAuraData, UpdateAuraAfterCombat
 -------------------------------------------------
@@ -73,7 +73,7 @@ local function InitCurrentSegmentData(segmentName, isBossEncounter)
                 for index = 1, 40 do
                     local name, _, _, _, _, _, source, _, _, spellId = UnitBuff(unit, index)
                     if not name then break end
-                    if UnitIsUnit(unit, source) and not AbstractDB["auraBlacklist"][spellId] then
+                    if source and UnitIsUnit(unit, source) and not AbstractDB["auraBlacklist"][spellId] then
                         InitAuraData("buff", player)
                         UpdateAuraData("buff", player, spellId, name, "SPELL_AURA_APPLIED", time())
                     end
@@ -127,6 +127,12 @@ local function CheckCombat(escapeCheck)
         -- update aura data
         UpdateAuraAfterCombat("buff")
         UpdateAuraAfterCombat("debuff")
+        -- clear "Creature" pets
+        for guid, _ in pairs(petToPlayer) do
+            if string.find(guid, "^C") then
+                petToPlayer[guid] = nil
+            end
+        end
         -- reset
         last = current
         current = nil
@@ -137,11 +143,16 @@ local segment = CreateFrame("Frame")
 segment:RegisterEvent("ENCOUNTER_START")
 segment:RegisterEvent("ENCOUNTER_END")
 segment:RegisterEvent("UNIT_FLAGS")
+segment:RegisterEvent("PLAYER_REGEN_ENABLED")
 
 local wipeCounter = {}
 segment:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4, arg5)
     if event == "UNIT_FLAGS" then
         if F:IsGroupUnit(arg1) and inCombat then
+            CheckCombat()
+        end
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        if inCombat then
             CheckCombat()
         end
     elseif event == "ENCOUNTER_START" then
@@ -164,6 +175,8 @@ segment:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4, arg5)
                 if arg5 == 0 then -- wipe
                     wipeCounter[arg1] = (wipeCounter[arg1] or 0) + 1
                     last["segment"] = arg2.." #"..wipeCounter[arg1]
+                else
+                    wipeCounter[arg1] = nil
                 end
             end
         end
@@ -191,6 +204,24 @@ local function Merge(type)
     end
 end
 -- Abstract:RegisterCallback("CombatEnd", "Merger_CombatEnd", Merge)
+
+-------------------------------------------------
+-- pet owner
+-------------------------------------------------
+local petOwnerFinder = CreateFrame("GameTooltip", "AbstractPetOwnerFinder", nil, "GameTooltipTemplate")
+local function FindPetOwner(petGUID)
+    petOwnerFinder:SetOwner (WorldFrame, "ANCHOR_NONE")
+    petOwnerFinder:SetHyperlink("unit:" .. petGUID)
+    local text = _G["AbstractPetOwnerFinderTextLeft2"] and _G["AbstractPetOwnerFinderTextLeft2"]:GetText()
+    if text and text ~= "" then
+        for unit in F:IterateGroupMembers() do
+            local pName = GetUnitName(unit)
+            if string.find(_G["AbstractPetOwnerFinderTextLeft2"]:GetText(), pName) then
+                return pName
+            end
+        end
+    end
+end
 
 -------------------------------------------------
 -- init data
@@ -561,6 +592,8 @@ function cleu:PET(...)
     if event == "SPELL_SUMMON" then
         -- print(event, sourceName, destGUID, destName)
         petToPlayer[destGUID] = sourceName
+    -- elseif event == "SPELL_CREATE" then
+    --     print(...)
     end
 end
 
@@ -572,7 +605,15 @@ function cleu:DAMAGE(...)
 
     --! friend-done
     if F:IsFriend(sourceFlags) then
-        sourceName = petToPlayer[sourceGUID] or sourceName
+        if string.find(sourceGUID, "^C") and not petToPlayer[sourceGUID] then -- Creature
+            local owner = FindPetOwner(sourceGUID)
+            if owner then
+                petToPlayer[sourceGUID] = owner
+                sourceName = owner
+            end
+        else
+            sourceName = petToPlayer[sourceGUID] or sourceName
+        end
         InitCurrentSegmentData(destName)
         InitDamageData("friend-done", sourceName)
         UpdateDamageData(UpdateDamageDone, "friend-done", ...)
@@ -605,15 +646,25 @@ function cleu:HEALING(...)
     if string.match(event, "HEAL") then
         --! friend-done
         if F:IsFriend(sourceFlags) then
-            sourceName = petToPlayer[sourceGUID] or sourceName
+            if string.find(sourceGUID, "^C") and not petToPlayer[sourceGUID] then -- Creature
+                local owner = FindPetOwner(sourceGUID)
+                if owner then
+                    petToPlayer[sourceGUID] = owner
+                    sourceName = owner
+                end
+            else
+                sourceName = petToPlayer[sourceGUID] or sourceName
+            end
             InitHealingData("friend-done", sourceName)
             UpdateHealingData(UpdateHealingDone, "friend-done", ...)
         end
+
         --! friend-taken
         if F:IsFriend(destFlags) then
             InitHealingData("friend-taken", destName)
             UpdateHealingData(UpdateHealingTaken, "friend-taken", ...)
         end
+
         --! enemy-done
         if F:IsEnemy(sourceFlags) and F:IsEnemy(destFlags) then
             InitHealingData("enemy-done", sourceName)
@@ -634,11 +685,13 @@ function cleu:HEALING(...)
             InitHealingData("friend-done", casterName)
             UpdateHealingData(UpdateHealingDone, "friend-done", ...)
         end
+
         --! friend-taken
         if F:IsFriend(destFlags) then
             InitHealingData("friend-taken", destName)
             UpdateHealingData(UpdateHealingTaken, "friend-taken", ...)
         end
+        
         --! enemy-done
         if F:IsEnemy(casterFlags) and F:IsEnemy(destFlags) then
             InitHealingData("enemy-done", casterName)
